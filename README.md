@@ -304,8 +304,4 @@ The `match_chunks` RPC performs pgvector cosine similarity search with optional 
 
 **Local embeddings** — intfloat/e5-large-v2 runs in the extraction container (CPU-only PyTorch). No external embedding API, no per-token cost, no latency dependency.
 
----
 
-## License
-
-MIT
