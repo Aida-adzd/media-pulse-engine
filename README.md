@@ -42,11 +42,11 @@ Supabase / pgvector
 
 ## Features
 
-- **Multi-source ingestion** — YouTube (transcript via `youtube-transcript-api` + `yt-dlp` fallback), web articles (trafilatura), Instagram captions (yt-dlp)
+- **Multi-source ingestion** — YouTube (transcript via `youtube-transcript-api` + `yt-dlp` fallback), web articles (trafilatura), Instagram captions (yt-dlp), PDF documents (pdfplumber)
 - **AI summarization** — Gemini 2.5 Flash Lite extracts summaries, key points, action items, entities, questions, and topic tags per source
 - **Semantic search** — `/search <query>` in Telegram returns a Gemini-synthesized answer grounded in your saved content via pgvector cosine similarity
 - **Knowledge linking** — every new source is automatically compared against existing content; meaningful relationships (related / builds_on / contradicts / duplicate) are stored
-- **Daily digests** — a scheduled workflow synthesizes all sources processed in the last 24 hours into a structured markdown digest sent to Telegram
+- **Periodic digests** — scheduled workflows synthesize completed sources into structured markdown digests: daily (9am), weekly (Monday 9am), and monthly (1st of month 9am), all sent to Telegram
 - **Idempotent processing** — status-based row locking (`pending → fetching → processing → completed | failed`) prevents double-processing if scheduled runs overlap
 - **Graceful degradation** — linking failures never re-mark completed sources as failed; the pipeline keeps moving
 
@@ -62,7 +62,7 @@ Supabase / pgvector
 | LLM | Google Gemini 2.5 Flash Lite |
 | Embeddings | intfloat/e5-large-v2 (1024-dim, CPU, via sentence-transformers) |
 | Storage | Supabase (PostgreSQL + pgvector) |
-| Content fetching | trafilatura, youtube-transcript-api, yt-dlp |
+| Content fetching | trafilatura, youtube-transcript-api, yt-dlp, pdfplumber |
 | Infrastructure | Docker Compose |
 
 ---
@@ -89,7 +89,8 @@ media-pulse-engine/
 │       │   └── extractors/
 │       │       ├── youtube.py      # Transcript extraction
 │       │       ├── article.py      # Web article extraction
-│       │       └── instagram.py    # Instagram caption extraction
+│       │       ├── instagram.py    # Instagram caption extraction
+│       │       └── pdf.py          # PDF text extraction
 │       ├── Dockerfile
 │       └── requirements.txt
 │
@@ -97,10 +98,12 @@ media-pulse-engine/
 │   └── Dockerfile                  # n8n base image
 │
 ├── workflows/
-│   ├── phase0_ingestion.json       # Telegram webhook → Supabase insert
+│   ├── phase0_ingestion.json       # Telegram webhook + commands (/list /tags /digest /search)
 │   ├── phase3_processing.json      # Poll pending → extract → process → link
-│   ├── phase3_digest.json          # Daily digest → Telegram notify
-│   └── phase_retry.json            # Re-queue stale failed sources
+│   ├── phase3_digest.json          # Daily digest at 9am
+│   ├── phase3_digest_weekly.json   # Weekly digest (Monday 9am)
+│   ├── phase3_digest_monthly.json  # Monthly digest (1st of month 9am)
+│   └── phase_retry.json            # Re-queue failed sources
 │
 ├── supabase/
 │   ├── schema.sql                  # Full database schema
@@ -166,11 +169,13 @@ Services:
 
 In n8n (http://localhost:5678):
 
-1. Import `workflows/phase0_ingestion.json` — handles Telegram webhook
+1. Import `workflows/phase0_ingestion.json` — handles Telegram webhook + commands
 2. Import `workflows/phase3_processing.json` — processes pending sources
-3. Import `workflows/phase3_digest.json` — runs daily digest at 9am
-4. Set your Telegram credential in the Telegram nodes
-5. Activate all three workflows
+3. Import `workflows/phase3_digest.json` — daily digest at 9am
+4. Import `workflows/phase3_digest_weekly.json` — weekly digest (Monday 9am)
+5. Import `workflows/phase3_digest_monthly.json` — monthly digest (1st of month 9am)
+6. Set your Telegram credential in the Telegram nodes
+7. Activate all five workflows
 
 ### 5. Register the Telegram webhook
 
@@ -199,7 +204,7 @@ POST /extract
 {"url": "https://youtu.be/...", "content_type": "youtube"}
 ```
 
-Supported `content_type` values: `youtube`, `article`, `instagram`
+Supported `content_type` values: `youtube`, `article`, `instagram`, `pdf`
 
 Returns: `{title, author, raw_content, metadata}`
 
@@ -269,8 +274,11 @@ The `match_chunks` RPC performs pgvector cosine similarity search with optional 
 
 | Command | Description |
 |---|---|
-| Send a URL | Ingests the content into the pipeline |
+| Send a URL | Ingests the content into the pipeline (YouTube, articles, Instagram, PDFs) |
 | `/search <query>` | Semantic search across your knowledge base |
+| `/list` | Show 5 most recently processed sources |
+| `/tags` | Show top 20 topic tags by frequency |
+| `/digest` | Fetch the most recent daily digest |
 
 ---
 

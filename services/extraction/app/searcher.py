@@ -8,7 +8,6 @@ from app.gemini import call_gemini, extract_text
 
 logger = logging.getLogger("extraction.searcher")
 
-
 def search(query: str, match_count: int = 5) -> dict:
     embedding = embed_query(query)
 

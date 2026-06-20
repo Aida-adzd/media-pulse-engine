@@ -11,7 +11,10 @@
       },
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [240, 300],
+      "position": [
+        240,
+        300
+      ],
       "id": "67fb991c-2ec4-47de-9756-1948b125ecca",
       "name": "Telegram Webhook",
       "webhookId": "4b64f69f-bcd6-4565-a3b9-4389f124b7be"
@@ -19,13 +22,20 @@
     {
       "parameters": {
         "conditions": {
-          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
           "conditions": [
             {
               "id": "418ca243-b5a6-4636-89bd-ebcd7c9968a3",
               "leftValue": "={{ $json.body.message.chat.id }}",
               "rightValue": 110045337,
-              "operator": { "type": "number", "operation": "equals" }
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
             }
           ],
           "combinator": "and"
@@ -34,30 +44,43 @@
       },
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
-      "position": [460, 300],
+      "position": [
+        460,
+        300
+      ],
       "id": "d20b51a2-850c-4620-ba28-866a712da55e",
       "name": "Filter: My Chat Only"
     },
     {
       "parameters": {
-        "jsCode": "const body = $input.first().json.body;\nconst message = body.message;\nconst text = (message.text || message.caption || '').trim();\n\n// /search command\nif (/^\\/search\\s+/i.test(text)) {\n  const query = text.replace(/^\\/search\\s+/i, '').trim();\n  return [{ json: { type: 'search', query, chat_id: message.chat.id } }];\n}\n\n// URL detection\nconst urlMatch = text.match(/(https?:\\/\\/[^\\s]+)/);\nif (!urlMatch) {\n  return [];\n}\n\nlet url = urlMatch[0];\n\n// Normalize YouTube URLs\nconst ytShort = url.match(/youtu\\.be\\/([A-Za-z0-9_-]+)/);\nif (ytShort) {\n  url = 'https://www.youtube.com/watch?v=' + ytShort[1];\n} else if (/youtube\\.com\\/watch/i.test(url)) {\n  try {\n    const u = new URL(url);\n    const v = u.searchParams.get('v');\n    if (v) url = 'https://www.youtube.com/watch?v=' + v;\n  } catch(e) {}\n}\n\nlet contentType = 'article';\nif (/youtube\\.com/i.test(url)) {\n  contentType = 'youtube';\n} else if (/spotify\\.com|podcasts\\.apple\\.com|anchor\\.fm|overcast\\.fm/i.test(url)) {\n  contentType = 'podcast';\n} else if (/twitter\\.com|x\\.com/i.test(url)) {\n  contentType = 'tweet';\n} else if (/instagram\\.com/i.test(url)) {\n  contentType = 'instagram';\n} else if (/\\.pdf(\\?.*)?$/i.test(url)) {\n  contentType = 'pdf';\n}\n\nreturn [{ json: { type: 'url', url: url, content_type: contentType, status: 'pending', chat_id: message.chat.id, telegram_message_id: message.message_id } }];"
+        "jsCode": "const body = $input.first().json.body;\nconst message = body.message;\nconst text = (message.text || message.caption || '').trim();\nconst chat_id = message.chat.id;\n\nif (/^\\/search\\s+/i.test(text)) {\n  const query = text.replace(/^\\/search\\s+/i, '').trim();\n  return [{ json: { type: 'search', query, chat_id } }];\n}\nif (/^\\/list$/i.test(text)) {\n  return [{ json: { type: 'list', chat_id } }];\n}\nif (/^\\/tags$/i.test(text)) {\n  return [{ json: { type: 'tags', chat_id } }];\n}\nif (/^\\/digest$/i.test(text)) {\n  return [{ json: { type: 'digest', chat_id } }];\n}\n\nconst urlMatch = text.match(/(https?:\\/\\/[^\\s]+)/);\nif (!urlMatch) return [];\nlet url = urlMatch[0];\n\nconst ytShort = url.match(/youtu\\.be\\/([A-Za-z0-9_-]+)/);\nif (ytShort) {\n  url = 'https://www.youtube.com/watch?v=' + ytShort[1];\n} else if (/youtube\\.com\\/watch/i.test(url)) {\n  try { const u = new URL(url); const v = u.searchParams.get('v'); if (v) url = 'https://www.youtube.com/watch?v=' + v; } catch(e) {}\n}\n\nlet contentType = 'article';\nif (/youtube\\.com/i.test(url))                                         contentType = 'youtube';\nelse if (/spotify\\.com|podcasts\\.apple\\.com|anchor\\.fm|overcast\\.fm/i.test(url)) contentType = 'podcast';\nelse if (/twitter\\.com|x\\.com/i.test(url))                            contentType = 'tweet';\nelse if (/instagram\\.com/i.test(url))                                  contentType = 'instagram';\nelse if (/\\.pdf(\\?.*)?$/i.test(url) || /\\/pdf\\//i.test(url))          contentType = 'pdf';\n\nreturn [{ json: { type: 'url', url, content_type: contentType, status: 'pending', chat_id, telegram_message_id: message.message_id } }];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [680, 220],
+      "position": [
+        680,
+        220
+      ],
       "id": "9966c4a7-deb3-4faf-ac12-89236812cdb3",
       "name": "Detect & Normalize"
     },
     {
       "parameters": {
         "conditions": {
-          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
           "conditions": [
             {
               "id": "31b32b96-1a3b-4532-bbb1-00d163427b15",
               "leftValue": "={{ $json.type }}",
               "rightValue": "search",
-              "operator": { "type": "string", "operation": "equals" }
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
             }
           ],
           "combinator": "and"
@@ -66,7 +89,10 @@
       },
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
-      "position": [900, 220],
+      "position": [
+        900,
+        220
+      ],
       "id": "5374d3dd-40aa-4221-8aac-90b617fa8178",
       "name": "IF: Search or URL?"
     },
@@ -77,7 +103,10 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Content-Type", "value": "application/json" }
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
           ]
         },
         "sendBody": true,
@@ -87,7 +116,10 @@
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1120, 120],
+      "position": [
+        1120,
+        120
+      ],
       "id": "3376c30e-4c01-4ebb-b0b1-e3880b8b37ab",
       "name": "Extraction: Search"
     },
@@ -97,7 +129,10 @@
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1340, 120],
+      "position": [
+        1340,
+        120
+      ],
       "id": "d11e20e3-86bd-4dc7-9b2d-f5e6dc45df62",
       "name": "Format Search Reply"
     },
@@ -107,7 +142,12 @@
         "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
         "sendHeaders": true,
         "headerParameters": {
-          "parameters": [{ "name": "Content-Type", "value": "application/json" }]
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
         },
         "sendBody": true,
         "specifyBody": "json",
@@ -116,7 +156,10 @@
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1560, 120],
+      "position": [
+        1560,
+        120
+      ],
       "id": "f1896432-dea4-48b4-a042-e2b560f06c65",
       "name": "Telegram: Search Reply"
     },
@@ -127,10 +170,22 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}" },
-            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}" },
-            { "name": "Content-Type", "value": "application/json" },
-            { "name": "Prefer", "value": "resolution=ignore-duplicates,return=representation" }
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=ignore-duplicates,return=representation"
+            }
           ]
         },
         "sendBody": true,
@@ -140,7 +195,10 @@
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1120, 320],
+      "position": [
+        1780,
+        320
+      ],
       "id": "ca6b9164-a6ad-4c79-863b-00ecb8dd06f0",
       "name": "Supabase: Insert Source"
     },
@@ -150,20 +208,30 @@
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1340, 320],
+      "position": [
+        2000,
+        320
+      ],
       "id": "dfa97ff8-ff81-4b5e-98a6-71cb2e09c08c",
       "name": "Check: New or Duplicate"
     },
     {
       "parameters": {
         "conditions": {
-          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
           "conditions": [
             {
               "id": "331d9bdf-9272-4640-83fb-eb66c2df80a5",
               "leftValue": "={{ $json.is_duplicate }}",
               "rightValue": true,
-              "operator": { "type": "boolean", "operation": "equals" }
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
             }
           ],
           "combinator": "and"
@@ -172,7 +240,10 @@
       },
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
-      "position": [1560, 320],
+      "position": [
+        2220,
+        320
+      ],
       "id": "df2839e3-6ab0-410d-85be-53592044b245",
       "name": "IF: Duplicate?"
     },
@@ -182,16 +253,24 @@
         "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
         "sendHeaders": true,
         "headerParameters": {
-          "parameters": [{ "name": "Content-Type", "value": "application/json" }]
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ chat_id: $json.chat_id, text: '⚠️ Already in queue:\\n' + $json.url }) }}",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $json.chat_id, text: '\u26a0\ufe0f Already in queue:\\n' + $json.url }) }}",
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1780, 240],
+      "position": [
+        2440,
+        240
+      ],
       "id": "331d9bdf-9272-4640-83fb-eb66c2df81a5",
       "name": "Telegram: Already Queued"
     },
@@ -201,59 +280,564 @@
         "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
         "sendHeaders": true,
         "headerParameters": {
-          "parameters": [{ "name": "Content-Type", "value": "application/json" }]
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ chat_id: $json.chat_id, text: '✅ URL received and added to the pending queue!\\n' + $json.url }) }}",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $json.chat_id, text: '\u2705 URL received and added to the pending queue!\\n' + $json.url }) }}",
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1780, 400],
+      "position": [
+        2440,
+        400
+      ],
       "id": "df2839e3-6ab0-410d-85be-53592044b246",
       "name": "Telegram: Confirm Receipt"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "if-list-cmd-cond",
+              "leftValue": "={{ $json.type }}",
+              "rightValue": "list",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1120,
+        240
+      ],
+      "id": "if-list-cmd",
+      "name": "IF: List?"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "if-tags-cmd-cond",
+              "leftValue": "={{ $json.type }}",
+              "rightValue": "tags",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1340,
+        240
+      ],
+      "id": "if-tags-cmd",
+      "name": "IF: Tags?"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "if-digest-cmd-cond",
+              "leftValue": "={{ $json.type }}",
+              "rightValue": "digest",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1560,
+        240
+      ],
+      "id": "if-digest-cmd",
+      "name": "IF: Digest Command?"
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/sources?status=eq.completed&select=title,url,content_type,processed_at&order=processed_at.desc&limit=5",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1120,
+        420
+      ],
+      "id": "sb-get-sources",
+      "name": "Supabase: Get Sources"
+    },
+    {
+      "parameters": {
+        "jsCode": "const sources = $input.all().map(i => i.json);\nif (!sources.length) return [{ json: { text: '\ud83d\udced No completed sources yet.' } }];\nconst emoji = { youtube: '\u25b6\ufe0f', article: '\ud83d\udcc4', instagram: '\ud83d\udcf8', pdf: '\ud83d\udccb' };\nconst lines = ['\ud83d\udcda *Recent Sources:*\\n'];\nsources.forEach((s, i) => {\n  const date = (s.processed_at || '').slice(0, 10);\n  const title = (s.title || 'Untitled').slice(0, 55);\n  lines.push(`${i+1}. ${emoji[s.content_type] || '\ud83d\udd17'} *${title}*\\n   ${date}`);\n});\nreturn [{ json: { text: lines.join('\\n') } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1340,
+        420
+      ],
+      "id": "fmt-list",
+      "name": "Format: List Reply"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $('Detect & Normalize').first().json.chat_id, text: $json.text, parse_mode: 'Markdown' }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1560,
+        420
+      ],
+      "id": "tg-list",
+      "name": "Telegram: List Reply"
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/source_tags?select=tags(name)&limit=2000",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1120,
+        600
+      ],
+      "id": "sb-get-tags",
+      "name": "Supabase: Get Tags"
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all().map(i => i.json);\nconst counts = {};\nrows.forEach(r => { const n = r.tags?.name; if (n) counts[n] = (counts[n] || 0) + 1; });\nconst sorted = Object.entries(counts).sort((a,b) => b[1]-a[1]).slice(0, 20);\nif (!sorted.length) return [{ json: { text: '\ud83c\udff7\ufe0f No tags yet.' } }];\nconst lines = ['\ud83c\udff7\ufe0f *Top Tags:*\\n'];\nsorted.forEach(([tag, count], i) => lines.push(`${i+1}. ${tag} (${count})`));\nreturn [{ json: { text: lines.join('\\n') } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1340,
+        600
+      ],
+      "id": "fmt-tags",
+      "name": "Format: Tags Reply"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $('Detect & Normalize').first().json.chat_id, text: $json.text, parse_mode: 'Markdown' }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1560,
+        600
+      ],
+      "id": "tg-tags",
+      "name": "Telegram: Tags Reply"
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/digests?select=period_type,period_start,period_end,content,source_ids&order=created_at.desc&limit=1",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1120,
+        780
+      ],
+      "id": "sb-get-digest",
+      "name": "Supabase: Get Digest"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all().map(i => i.json);\nif (!items.length) return [{ json: { text: '\ud83d\udcf0 No digest available yet. One is generated daily at 9am.' } }];\nconst d = items[0];\nconst start = (d.period_start || '').slice(0, 10);\nconst end   = (d.period_end   || '').slice(0, 10);\nconst n = (d.source_ids || []).length;\nconst content = (d.content || '').slice(0, 3500);\nconst label = d.period_type === 'weekly' ? 'Weekly' : d.period_type === 'monthly' ? 'Monthly' : 'Daily';\nreturn [{ json: { text: `\ud83d\udcf0 *${label} Digest* (${start} \u2192 ${end})\\n_Covers ${n} source(s)_\\n\\n${content}` } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1340,
+        780
+      ],
+      "id": "fmt-digest",
+      "name": "Format: Digest Reply"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $('Detect & Normalize').first().json.chat_id, text: $json.text, parse_mode: 'Markdown' }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1560,
+        780
+      ],
+      "id": "tg-digest",
+      "name": "Telegram: Digest Reply"
     }
   ],
   "connections": {
     "Telegram Webhook": {
-      "main": [[{ "node": "Filter: My Chat Only", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Filter: My Chat Only",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Filter: My Chat Only": {
       "main": [
-        [{ "node": "Detect & Normalize", "type": "main", "index": 0 }],
+        [
+          {
+            "node": "Detect & Normalize",
+            "type": "main",
+            "index": 0
+          }
+        ],
         []
       ]
     },
     "Detect & Normalize": {
-      "main": [[{ "node": "IF: Search or URL?", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "IF: Search or URL?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "IF: Search or URL?": {
       "main": [
-        [{ "node": "Extraction: Search", "type": "main", "index": 0 }],
-        [{ "node": "Supabase: Insert Source", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Extraction: Search",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "IF: List?",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Extraction: Search": {
-      "main": [[{ "node": "Format Search Reply", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Format Search Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Format Search Reply": {
-      "main": [[{ "node": "Telegram: Search Reply", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Telegram: Search Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Supabase: Insert Source": {
-      "main": [[{ "node": "Check: New or Duplicate", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Check: New or Duplicate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Check: New or Duplicate": {
-      "main": [[{ "node": "IF: Duplicate?", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "IF: Duplicate?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "IF: Duplicate?": {
       "main": [
-        [{ "node": "Telegram: Already Queued", "type": "main", "index": 0 }],
-        [{ "node": "Telegram: Confirm Receipt", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Telegram: Already Queued",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Telegram: Confirm Receipt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: List?": {
+      "main": [
+        [
+          {
+            "node": "Supabase: Get Sources",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "IF: Tags?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: Tags?": {
+      "main": [
+        [
+          {
+            "node": "Supabase: Get Tags",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "IF: Digest Command?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: Digest Command?": {
+      "main": [
+        [
+          {
+            "node": "Supabase: Get Digest",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Supabase: Insert Source",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase: Get Sources": {
+      "main": [
+        [
+          {
+            "node": "Format: List Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format: List Reply": {
+      "main": [
+        [
+          {
+            "node": "Telegram: List Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase: Get Tags": {
+      "main": [
+        [
+          {
+            "node": "Format: Tags Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format: Tags Reply": {
+      "main": [
+        [
+          {
+            "node": "Telegram: Tags Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase: Get Digest": {
+      "main": [
+        [
+          {
+            "node": "Format: Digest Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format: Digest Reply": {
+      "main": [
+        [
+          {
+            "node": "Telegram: Digest Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     }
   },
   "active": false,
-  "settings": { "executionOrder": "v1" },
+  "settings": {
+    "executionOrder": "v1"
+  },
   "pinData": {}
 }

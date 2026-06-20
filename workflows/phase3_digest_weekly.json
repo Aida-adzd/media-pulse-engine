@@ -1,0 +1,145 @@
+{
+  "name": "Phase 3 - Weekly Digest",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * 1"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        300
+      ],
+      "id": "schedule-trigger",
+      "name": "Schedule: Phase 3 - Weekly Digest"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://extraction:8000/digest",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ JSON.stringify({ period_type: \"weekly\", since: $now.minus({days:7}).startOf('day').toISO(), until: $now.startOf('day').toISO() }) }",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        220,
+        300
+      ],
+      "id": "run-digest",
+      "name": "Extraction: Digest",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "check-skipped",
+              "leftValue": "={{ $json.skipped }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        440,
+        300
+      ],
+      "id": "if-not-skipped",
+      "name": "IF: Digest Created?"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
+        "text": "={{ '\ud83d\udcf0 *Weekly Pulse*\\n\\n' + $json.sources_included + ' items processed\\nDigest ID: ' + $json.digest_id }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        660,
+        200
+      ],
+      "id": "notify-telegram",
+      "name": "Telegram: Notify"
+    }
+  ],
+  "connections": {
+    "Extraction: Digest": {
+      "main": [
+        [
+          {
+            "node": "IF: Digest Created?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "IF: Digest Created?": {
+      "main": [
+        [
+          {
+            "node": "Telegram: Notify",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Schedule: Phase 3 - Weekly Digest": {
+      "main": [
+        [
+          {
+            "node": "Extraction: Digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

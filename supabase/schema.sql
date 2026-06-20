@@ -109,7 +109,7 @@ create table digests (
 create index idx_digests_period on digests(period_start, period_end);
 
 -- ---------------------------------------------------------
--- match_chunks: semantic search RPC used by the FastMCP server
+-- match_chunks: semantic search RPC (used by /search endpoint)
 -- ---------------------------------------------------------
 create or replace function match_chunks(
     query_embedding vector(1024),

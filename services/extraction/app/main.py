@@ -6,6 +6,7 @@ from fastapi import FastAPI, HTTPException
 from app.embeddings import warmup, embed_passage, embed_query
 from app.extractors.article import extract_article
 from app.extractors.instagram import extract_instagram
+from app.extractors.pdf import extract_pdf
 from app.extractors.youtube import extract_youtube
 from app.linker import link_source
 from app.processor import process_source
@@ -112,6 +113,8 @@ def extract(req: ExtractRequest) -> ExtractResponse:
             return extract_instagram(req.url)
         if req.content_type in ("article", "tweet"):
             return extract_article(req.url)
+        if req.content_type == "pdf" or req.url.lower().endswith(".pdf") or "/pdf/" in req.url.lower():
+            return extract_pdf(req.url)
         raise HTTPException(
             status_code=501,
             detail=f"Extraction for content_type '{req.content_type}' is not implemented yet",

@@ -5,6 +5,7 @@ pydantic==2.8.2
 youtube-transcript-api==0.6.2
 yt-dlp
 trafilatura==1.12.2
+pdfplumber==0.11.4
 # CPU-only torch keeps the image ~800 MB smaller than the default CUDA wheel
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch==2.6.0+cpu

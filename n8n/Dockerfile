@@ -2,9 +2,8 @@ FROM n8nio/n8n:latest
 
 USER root
 
-# Manually install the apk package manager (auto-detects CPU architecture)
-# Kept around for any lightweight Python utilities used inside Code nodes.
-# Heavy lifting (scraping, AI calls, parsing) now lives in services/extraction.
+# Install apk package manager (auto-detects CPU architecture) and Python.
+# n8n runs no Code nodes — all intelligence lives in services/extraction.
 RUN ARCH=$(uname -m) && \
     if [ "$ARCH" = "x86_64" ]; then APK_ARCH="x86_64"; else APK_ARCH="aarch64"; fi && \
     wget -qO /sbin/apk "https://gitlab.alpinelinux.org/api/v4/projects/5/packages/generic/v2.14.4/${APK_ARCH}/apk.static" && \

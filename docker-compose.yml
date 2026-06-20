@@ -42,9 +42,16 @@ services:
       - SUPABASE_URL=${SUPABASE_URL}
       - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash-lite}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.1-flash-lite}
     volumes:
       - ./services/extraction/youtube-cookies.txt:/app/youtube-cookies.txt
+      # Mount app code so code changes take effect on restart without a full image rebuild.
+      # The base image (PyTorch + e5 model) is still reused from the built layer.
+      - ./services/extraction/app:/app/app
+    # Install packages not yet in the image, then start.
+    command: >
+      sh -c "pip install pdfplumber==0.11.4 -q &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000"
     networks:
       - media-pulse
 

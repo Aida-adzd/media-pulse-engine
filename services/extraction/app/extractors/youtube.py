@@ -1,8 +1,10 @@
+import json
 import logging
 import os
 import re
 
 import httpx
+import yt_dlp
 from youtube_transcript_api import (
     NoTranscriptFound,
     TranscriptsDisabled,
@@ -90,9 +92,6 @@ def _parse_vtt(content: str) -> str:
 def _fetch_transcript_yt_dlp(url: str) -> str:
     """Fallback: use yt-dlp to get subtitle URLs, then download via yt-dlp's
     own session so cookies and headers are applied correctly."""
-    import json as _json
-    import yt_dlp
-
     cookies_file = os.environ.get("YOUTUBE_COOKIES_FILE", "")
 
     ydl_opts = {"quiet": True, "no_warnings": True}
@@ -113,7 +112,7 @@ def _fetch_transcript_yt_dlp(url: str) -> str:
         content = response.read().decode("utf-8")
 
     if ext == "json3":
-        return _parse_json3(_json.loads(content))
+        return _parse_json3(json.loads(content))
     return _parse_vtt(content)
 
 

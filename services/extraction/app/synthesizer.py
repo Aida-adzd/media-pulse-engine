@@ -51,7 +51,6 @@ def synthesize_digest(period_type: str, since: str, until: str) -> dict:
 
     resp = call_gemini({"contents": [{"parts": [{"text": prompt}]}]}, timeout=120)
     digest_content = extract_text(resp).strip()
-
     if not digest_content:
         logger.warning("Gemini returned empty digest content")
         return {"period_type": period_type, "sources_included": len(sources),
