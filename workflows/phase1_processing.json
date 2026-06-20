@@ -1,0 +1,420 @@
+{
+  "name": "Media Pulse - Phase 1 Processing",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 300],
+      "id": "schedule-trigger",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/sources",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+            { "name": "Accept", "value": "application/json" }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "status", "value": "eq.pending" },
+            { "name": "limit", "value": "1" },
+            { "name": "order", "value": "created_at.asc" },
+            { "name": "select", "value": "id,url,content_type,status,chat_id" }
+          ]
+        },
+        "options": {
+          "splitIntoItems": true
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [220, 300],
+      "id": "fetch-pending",
+      "name": "Supabase: Fetch Pending"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "check-pending",
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [440, 300],
+      "id": "if-any-pending",
+      "name": "IF: Any Pending?"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/sources?id=eq.{{ $json.id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Prefer", "value": "return=representation" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ status: 'fetching' }) }}",
+        "options": {
+          "splitIntoItems": true
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [660, 200],
+      "id": "claim-row",
+      "name": "Supabase: Claim Row"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://extraction:8000/extract",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ url: $json.url, content_type: $json.content_type }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [880, 200],
+      "id": "extract-content",
+      "name": "Extraction: Extract Content",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/sources?id=eq.{{ $node[\"Supabase: Claim Row\"].json.id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ title: $json.title, author: $json.author, raw_content: $json.raw_content, metadata: $json.metadata, status: 'processing' }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1100, 200],
+      "id": "update-source",
+      "name": "Supabase: Update Source"
+    },
+    {
+      "parameters": {
+        "jsCode": "const claimRow = $node[\"Supabase: Claim Row\"].json;\nconst source = Array.isArray(claimRow) ? claimRow[0] : claimRow;\nconst extraction = $node[\"Extraction: Extract Content\"].json;\n\nconst sourceId = source.id;\nconst rawContent = extraction.raw_content || '';\nconst title = extraction.title || source.url || 'Untitled';\nconst contentType = source.content_type || 'article';\n\nconst instructions = 'Respond with ONLY a valid JSON object with these keys: summary (string, 2-3 sentences), key_points (array of strings), action_items (array of strings), entities (array of strings), questions (array of strings).';\nconst prompt = instructions + '\\n\\nContent type: ' + contentType + '\\nTitle: ' + title + '\\n\\nContent:\\n' + rawContent.substring(0, 50000);\n\nreturn [{\n  json: {\n    source_id: sourceId,\n    raw_content: rawContent,\n    gemini_request: {\n      contents: [{ parts: [{ text: prompt }] }],\n      generationConfig: { responseMimeType: 'application/json' }\n    }\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1320, 200],
+      "id": "prepare-gemini",
+      "name": "Code: Prepare Gemini Request"
+    },
+    {
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": 5,
+        "unit": "seconds"
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [1540, 200],
+      "id": "wait-before-gemini",
+      "name": "Wait 5s",
+      "webhookId": "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={{ $env.GEMINI_API_KEY }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($node[\"Code: Prepare Gemini Request\"].json.gemini_request) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1760, 200],
+      "id": "gemini-summarize",
+      "name": "Gemini: Summarize",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const geminiResp = $input.first().json;\nconst candidates = geminiResp.candidates || [];\nconst part = candidates[0] && candidates[0].content && candidates[0].content.parts && candidates[0].content.parts[0];\nconst rawText = part ? part.text : '{}';\n\nlet parsed;\ntry {\n  parsed = typeof rawText === 'object' ? rawText : JSON.parse(rawText);\n} catch(e) {\n  parsed = {};\n}\n\nconst sourceId = $node[\"Code: Prepare Gemini Request\"].json.source_id;\nconst rawContent = $node[\"Code: Prepare Gemini Request\"].json.raw_content;\n\nconst insights = [];\nconst addInsights = function(arr, type) {\n  (arr || []).forEach(function(item) {\n    if (typeof item === 'string' && item.trim()) {\n      insights.push({ source_id: sourceId, insight_type: type, content: item.trim() });\n    }\n  });\n};\naddInsights(parsed.key_points, 'key_point');\naddInsights(parsed.action_items, 'action_item');\naddInsights(parsed.entities, 'entity');\naddInsights(parsed.questions, 'question');\n\nconst words = (rawContent || '').split(/\\s+/).filter(function(w) { return w.length > 0; });\nconst CHUNK_SIZE = 800;\nconst OVERLAP = 100;\nconst chunkTexts = [];\nconst chunkMeta = [];\n\nif (words.length === 0) {\n  chunkTexts.push(rawContent || '');\n  chunkMeta.push({ chunk_index: 0, token_count: 0 });\n} else {\n  let start = 0;\n  let chunkNum = 0;\n  while (start < words.length) {\n    const end = Math.min(start + CHUNK_SIZE, words.length);\n    chunkTexts.push(words.slice(start, end).join(' '));\n    chunkMeta.push({ chunk_index: chunkNum, token_count: end - start });\n    chunkNum++;\n    if (end >= words.length) break;\n    start += CHUNK_SIZE - OVERLAP;\n  }\n}\n\nreturn [{ json: { source_id: sourceId, summary: parsed.summary || '', insights: insights, chunk_texts: chunkTexts, chunk_meta: chunkMeta } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1980, 200],
+      "id": "parse-and-prepare",
+      "name": "Code: Parse & Prepare",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://extraction:8000/embed-batch",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ texts: $json.chunk_texts, mode: 'passage' }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2200, 200],
+      "id": "embed-chunks",
+      "name": "Extraction: Embed Chunks",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const embedResp = $input.first().json;\nconst prep = $node[\"Code: Parse & Prepare\"].json;\n\nconst chunks = prep.chunk_meta.map(function(meta, i) {\n  const vec = embedResp.embeddings && embedResp.embeddings[i];\n  const embeddingStr = (vec && vec.length > 0) ? '[' + vec.join(',') + ']' : null;\n  return {\n    source_id: prep.source_id,\n    chunk_index: meta.chunk_index,\n    content: prep.chunk_texts[i],\n    token_count: meta.token_count,\n    embedding: embeddingStr\n  };\n});\n\nreturn [{ json: { source_id: prep.source_id, summary: prep.summary, insights: prep.insights, chunks: chunks } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2420, 200],
+      "id": "merge-embeddings",
+      "name": "Code: Merge Embeddings",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/insights",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Prefer", "value": "return=minimal" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.insights) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2640, 200],
+      "id": "insert-insights",
+      "name": "Supabase: Insert Insights"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/chunks",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Prefer", "value": "return=minimal" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($node[\"Code: Merge Embeddings\"].json.chunks) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2860, 200],
+      "id": "insert-chunks",
+      "name": "Supabase: Insert Chunks"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/sources?id=eq.{{ $node[\"Code: Merge Embeddings\"].json.source_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ status: 'completed', processed_at: new Date().toISOString(), summary: $node[\"Code: Merge Embeddings\"].json.summary }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [3080, 200],
+      "id": "mark-completed",
+      "name": "Supabase: Mark Completed"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/sources?id=eq.{{ $node[\"Supabase: Claim Row\"].json.id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ status: 'failed', error_message: ($json.error && $json.error.message) ? $json.error.message.substring(0, 500) : 'Workflow execution error — check n8n execution logs.' }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1540, 440],
+      "id": "mark-failed",
+      "name": "Supabase: Mark Failed"
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [{ "node": "Supabase: Fetch Pending", "type": "main", "index": 0 }]
+      ]
+    },
+    "Supabase: Fetch Pending": {
+      "main": [
+        [{ "node": "IF: Any Pending?", "type": "main", "index": 0 }]
+      ]
+    },
+    "IF: Any Pending?": {
+      "main": [
+        [{ "node": "Supabase: Claim Row", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "Supabase: Claim Row": {
+      "main": [
+        [{ "node": "Extraction: Extract Content", "type": "main", "index": 0 }]
+      ]
+    },
+    "Extraction: Extract Content": {
+      "main": [
+        [{ "node": "Supabase: Update Source", "type": "main", "index": 0 }],
+        [{ "node": "Supabase: Mark Failed", "type": "main", "index": 0 }]
+      ]
+    },
+    "Supabase: Update Source": {
+      "main": [
+        [{ "node": "Code: Prepare Gemini Request", "type": "main", "index": 0 }]
+      ]
+    },
+    "Code: Prepare Gemini Request": {
+      "main": [
+        [{ "node": "Wait 5s", "type": "main", "index": 0 }]
+      ]
+    },
+    "Wait 5s": {
+      "main": [
+        [{ "node": "Gemini: Summarize", "type": "main", "index": 0 }]
+      ]
+    },
+    "Gemini: Summarize": {
+      "main": [
+        [{ "node": "Code: Parse & Prepare", "type": "main", "index": 0 }],
+        [{ "node": "Supabase: Mark Failed", "type": "main", "index": 0 }]
+      ]
+    },
+    "Code: Parse & Prepare": {
+      "main": [
+        [{ "node": "Extraction: Embed Chunks", "type": "main", "index": 0 }],
+        [{ "node": "Supabase: Mark Failed", "type": "main", "index": 0 }]
+      ]
+    },
+    "Extraction: Embed Chunks": {
+      "main": [
+        [{ "node": "Code: Merge Embeddings", "type": "main", "index": 0 }],
+        [{ "node": "Supabase: Mark Failed", "type": "main", "index": 0 }]
+      ]
+    },
+    "Code: Merge Embeddings": {
+      "main": [
+        [{ "node": "Supabase: Insert Insights", "type": "main", "index": 0 }],
+        [{ "node": "Supabase: Mark Failed", "type": "main", "index": 0 }]
+      ]
+    },
+    "Supabase: Insert Insights": {
+      "main": [
+        [{ "node": "Supabase: Insert Chunks", "type": "main", "index": 0 }]
+      ]
+    },
+    "Supabase: Insert Chunks": {
+      "main": [
+        [{ "node": "Supabase: Mark Completed", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

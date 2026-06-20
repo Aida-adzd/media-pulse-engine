@@ -1,0 +1,72 @@
+services:
+  n8n:
+    build:
+      context: ./n8n
+    container_name: n8n
+    restart: always
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_DIAGNOSTICS_ENABLED=false
+      - N8N_VERSION_NOTIFICATIONS_ENABLED=false
+      - NODE_ENV=production
+      - N8N_RUNNERS_ENABLED=true
+      # Public URL Telegram uses to reach this n8n instance (ngrok/Cloudflare Tunnel).
+      - WEBHOOK_URL=${WEBHOOK_URL}
+      # Allow workflow expressions to read $env.* below (used by workflows/phase0_ingestion.json
+      # so secrets live only in .env, never inside exported workflow JSON).
+      - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+      - EXTRACTION_SERVICE_URL=${EXTRACTION_SERVICE_URL}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    volumes:
+      - n8n_data:/home/node/.n8n
+    networks:
+      - media-pulse
+
+  extraction:
+    build:
+      context: ./services/extraction
+    container_name: media-pulse-extraction
+    restart: always
+    ports:
+      - "8001:8000"
+    environment:
+      - YOUTUBE_COOKIES_FILE=/app/youtube-cookies.txt
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash-lite}
+    volumes:
+      - ./services/extraction/youtube-cookies.txt:/app/youtube-cookies.txt
+    networks:
+      - media-pulse
+
+  ngrok:
+    image: ngrok/ngrok:latest
+    container_name: media-pulse-ngrok
+    restart: unless-stopped
+    command: http n8n:5678 --log stdout
+    environment:
+      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
+    ports:
+      - "4040:4040"
+    depends_on:
+      - n8n
+    networks:
+      - media-pulse
+
+networks:
+  media-pulse:
+    driver: bridge
+
+volumes:
+  n8n_data:
+    external: true
+    name: n8n_data

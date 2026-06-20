@@ -1,0 +1,259 @@
+{
+  "id": "315a2328-d1c5-4494-bd0c-8c00c3a4fc19",
+  "name": "Media Pulse - Phase 0 Ingestion",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "media-pulse-telegram",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "id": "67fb991c-2ec4-47de-9756-1948b125ecca",
+      "name": "Telegram Webhook",
+      "webhookId": "4b64f69f-bcd6-4565-a3b9-4389f124b7be"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            {
+              "id": "418ca243-b5a6-4636-89bd-ebcd7c9968a3",
+              "leftValue": "={{ $json.body.message.chat.id }}",
+              "rightValue": 110045337,
+              "operator": { "type": "number", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [460, 300],
+      "id": "d20b51a2-850c-4620-ba28-866a712da55e",
+      "name": "Filter: My Chat Only"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body;\nconst message = body.message;\nconst text = (message.text || message.caption || '').trim();\n\n// /search command\nif (/^\\/search\\s+/i.test(text)) {\n  const query = text.replace(/^\\/search\\s+/i, '').trim();\n  return [{ json: { type: 'search', query, chat_id: message.chat.id } }];\n}\n\n// URL detection\nconst urlMatch = text.match(/(https?:\\/\\/[^\\s]+)/);\nif (!urlMatch) {\n  return [];\n}\n\nlet url = urlMatch[0];\n\n// Normalize YouTube URLs\nconst ytShort = url.match(/youtu\\.be\\/([A-Za-z0-9_-]+)/);\nif (ytShort) {\n  url = 'https://www.youtube.com/watch?v=' + ytShort[1];\n} else if (/youtube\\.com\\/watch/i.test(url)) {\n  try {\n    const u = new URL(url);\n    const v = u.searchParams.get('v');\n    if (v) url = 'https://www.youtube.com/watch?v=' + v;\n  } catch(e) {}\n}\n\nlet contentType = 'article';\nif (/youtube\\.com/i.test(url)) {\n  contentType = 'youtube';\n} else if (/spotify\\.com|podcasts\\.apple\\.com|anchor\\.fm|overcast\\.fm/i.test(url)) {\n  contentType = 'podcast';\n} else if (/twitter\\.com|x\\.com/i.test(url)) {\n  contentType = 'tweet';\n} else if (/instagram\\.com/i.test(url)) {\n  contentType = 'instagram';\n} else if (/\\.pdf(\\?.*)?$/i.test(url)) {\n  contentType = 'pdf';\n}\n\nreturn [{ json: { type: 'url', url: url, content_type: contentType, status: 'pending', chat_id: message.chat.id, telegram_message_id: message.message_id } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 220],
+      "id": "9966c4a7-deb3-4faf-ac12-89236812cdb3",
+      "name": "Detect & Normalize"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            {
+              "id": "31b32b96-1a3b-4532-bbb1-00d163427b15",
+              "leftValue": "={{ $json.type }}",
+              "rightValue": "search",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [900, 220],
+      "id": "5374d3dd-40aa-4221-8aac-90b617fa8178",
+      "name": "IF: Search or URL?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://extraction:8000/search",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ query: $json.query, match_count: 5 }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 120],
+      "id": "3376c30e-4c01-4ebb-b0b1-e3880b8b37ab",
+      "name": "Extraction: Search"
+    },
+    {
+      "parameters": {
+        "jsCode": "const result = $input.first().json;\nconst chatId = $('Detect & Normalize').first().json.chat_id;\n\nlet msg = '\\uD83D\\uDD0D *' + result.query + '*\\n\\n' + result.answer;\nif (result.sources && result.sources.length > 0) {\n  msg += '\\n\\n\\uD83D\\uDCDA *Sources:*';\n  for (const src of result.sources) {\n    msg += '\\n\\u2022 ' + src.title;\n  }\n}\nreturn [{ json: { chat_id: chatId, text: msg, parse_mode: 'Markdown' } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 120],
+      "id": "d11e20e3-86bd-4dc7-9b2d-f5e6dc45df62",
+      "name": "Format Search Reply"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "Content-Type", "value": "application/json" }]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $json.chat_id, text: $json.text, parse_mode: $json.parse_mode }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1560, 120],
+      "id": "f1896432-dea4-48b4-a042-e2b560f06c65",
+      "name": "Telegram: Search Reply"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/sources?on_conflict=url",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Prefer", "value": "resolution=ignore-duplicates,return=representation" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ url: $json.url, content_type: $json.content_type, status: $json.status, chat_id: $json.chat_id, telegram_message_id: $json.telegram_message_id }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 320],
+      "id": "ca6b9164-a6ad-4c79-863b-00ecb8dd06f0",
+      "name": "Supabase: Insert Source"
+    },
+    {
+      "parameters": {
+        "jsCode": "const insertResult = $input.all();\nconst prevData = $('Detect & Normalize').first().json;\nconst isDuplicate = !insertResult || insertResult.length === 0 || !insertResult[0].json.id;\nreturn [{ json: { url: prevData.url, chat_id: prevData.chat_id, is_duplicate: isDuplicate } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 320],
+      "id": "dfa97ff8-ff81-4b5e-98a6-71cb2e09c08c",
+      "name": "Check: New or Duplicate"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            {
+              "id": "331d9bdf-9272-4640-83fb-eb66c2df80a5",
+              "leftValue": "={{ $json.is_duplicate }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1560, 320],
+      "id": "df2839e3-6ab0-410d-85be-53592044b245",
+      "name": "IF: Duplicate?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "Content-Type", "value": "application/json" }]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $json.chat_id, text: '⚠️ Already in queue:\\n' + $json.url }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1780, 240],
+      "id": "331d9bdf-9272-4640-83fb-eb66c2df81a5",
+      "name": "Telegram: Already Queued"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "Content-Type", "value": "application/json" }]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $json.chat_id, text: '✅ URL received and added to the pending queue!\\n' + $json.url }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1780, 400],
+      "id": "df2839e3-6ab0-410d-85be-53592044b246",
+      "name": "Telegram: Confirm Receipt"
+    }
+  ],
+  "connections": {
+    "Telegram Webhook": {
+      "main": [[{ "node": "Filter: My Chat Only", "type": "main", "index": 0 }]]
+    },
+    "Filter: My Chat Only": {
+      "main": [
+        [{ "node": "Detect & Normalize", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "Detect & Normalize": {
+      "main": [[{ "node": "IF: Search or URL?", "type": "main", "index": 0 }]]
+    },
+    "IF: Search or URL?": {
+      "main": [
+        [{ "node": "Extraction: Search", "type": "main", "index": 0 }],
+        [{ "node": "Supabase: Insert Source", "type": "main", "index": 0 }]
+      ]
+    },
+    "Extraction: Search": {
+      "main": [[{ "node": "Format Search Reply", "type": "main", "index": 0 }]]
+    },
+    "Format Search Reply": {
+      "main": [[{ "node": "Telegram: Search Reply", "type": "main", "index": 0 }]]
+    },
+    "Supabase: Insert Source": {
+      "main": [[{ "node": "Check: New or Duplicate", "type": "main", "index": 0 }]]
+    },
+    "Check: New or Duplicate": {
+      "main": [[{ "node": "IF: Duplicate?", "type": "main", "index": 0 }]]
+    },
+    "IF: Duplicate?": {
+      "main": [
+        [{ "node": "Telegram: Already Queued", "type": "main", "index": 0 }],
+        [{ "node": "Telegram: Confirm Receipt", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "pinData": {}
+}

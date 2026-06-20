@@ -1,0 +1,20 @@
+# Secrets & credentials
+.env
+services/extraction/youtube-cookies.txt
+
+# Internal AI assistant instructions (not for public)
+CLAUDE.md
+
+# n8n local data (if ever bind-mounted instead of named volume)
+n8n_data/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# IDE
+.idea/
+
+# OS
+.DS_Store

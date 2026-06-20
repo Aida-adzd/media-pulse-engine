@@ -1,0 +1,110 @@
+{
+  "name": "Media Pulse - Auto Retry Failed Sources",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "minutes", "minutesInterval": 30 }] }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300],
+      "id": "schedule-retry",
+      "name": "Schedule: Every 30 Min"
+    },
+    {
+      "parameters": {
+        "jsCode": "const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();\nreturn [{ json: { since } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300],
+      "id": "calc-window",
+      "name": "Calc: 7-Day Window"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/sources",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}" }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "status", "value": "eq.failed" },
+            { "name": "or", "value": "(error_message.ilike.*429*,error_message.ilike.*503*)" },
+            { "name": "created_at", "value": "=gte.{{ $json.since }}" },
+            { "name": "select", "value": "id,url,error_message" }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 300],
+      "id": "fetch-retryable",
+      "name": "Supabase: Fetch Retryable"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst retryable = items.filter(i => i.json && i.json.id);\nif (retryable.length === 0) {\n  return [];\n}\nconst ids = retryable.map(i => i.json.id);\nreturn [{ json: { count: ids.length, id_filter: `(${ids.join(',')})` } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300],
+      "id": "build-patch",
+      "name": "Build: Patch Filter"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/sources",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Prefer", "value": "return=minimal" }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "id", "value": "=in.{{ $json.id_filter }}" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"status\": \"pending\", \"error_message\": null }",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 300],
+      "id": "patch-pending",
+      "name": "Supabase: Reset to Pending"
+    }
+  ],
+  "connections": {
+    "Schedule: Every 30 Min": {
+      "main": [[{ "node": "Calc: 7-Day Window", "type": "main", "index": 0 }]]
+    },
+    "Calc: 7-Day Window": {
+      "main": [[{ "node": "Supabase: Fetch Retryable", "type": "main", "index": 0 }]]
+    },
+    "Supabase: Fetch Retryable": {
+      "main": [[{ "node": "Build: Patch Filter", "type": "main", "index": 0 }]]
+    },
+    "Build: Patch Filter": {
+      "main": [[{ "node": "Supabase: Reset to Pending", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "pinData": {}
+}
